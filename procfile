@@ -1,2 +1,2 @@
-web: gunicorn tasks:app --log-file=-
-worker: celery -A tasks.celery worker
+web: gunicorn tasks:app --log-file=- --loglevel=DEBUG
+worker: celery -A tasks.celery worker --loglevel=DEBUG
