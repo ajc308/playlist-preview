@@ -53,7 +53,7 @@
                         <div id="preview">
                             <label>Playlist Preview for <b>{{ playlist_name }}</b> ({{ sound_end - sound_start }} tracks):</label>
                             <audio >
-                              <source src="{{ url_for('static', filename = audio_file_name) }}" type="audio/{{ file_format }}" preload="auto">
+                              <source src="{{ url_for('static', filename=audio_file_name) }}" type="audio/{{ file_format }}" preload="auto">
                             Your browser does not support the audio element.
                             </audio>
                         </div>

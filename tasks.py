@@ -4,6 +4,7 @@ import random
 import requests
 import string
 
+from auth import get_apix_auth_headers
 from celery import Celery
 from flask import Flask, render_template, request
 from playlists import get_all_genre_playlists
@@ -17,7 +18,6 @@ app.config.update(
     DEBUG=True
 )
 
-headers = {'Authorization': 'Token {}'.format(os.environ.get('APIX_AUTH_TOKEN'))}
 AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 
@@ -135,7 +135,8 @@ def process_sounds(sounds, file_format, s3_extension, sample_duration, fade_dura
         print(sound['name'], sound['url'])
         key_name = sound['id'] + s3_extension if s3_extension else sound['id']
 
-        song = AudioSegment.from_file(('/app/static/audio_files/songs/{}'.format(key_name)), format=file_format)
+        song = AudioSegment.from_file('static/{}'.format(key_name), format=file_format)
+        print(song)
 
         #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
         sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * one_second]
@@ -143,14 +144,15 @@ def process_sounds(sounds, file_format, s3_extension, sample_duration, fade_dura
         #Append sample with cross fade
         preview = preview.append(sample, crossfade=fade_duration * one_second) if preview else sample
 
-        os.remove('/app/static/audio_files/songs/{}'.format(key_name))
+        os.remove('static/{}'.format(key_name))
 
     return preview
 
 
 @celery.task(name="tasks.download_sound")
 def download_sound(bucket, key_name):
-    bucket.get_key(key_name).get_contents_to_filename('/app/static/audio_files/songs/{}'.format(key_name))
+    f = bucket.get_key(key_name).get_contents_to_filename('static/{}'.format(key_name))
+    print(f)
 
 
 @app.route('/')
@@ -187,7 +189,7 @@ def generate_playlist_preview():
 
         playlist_api_url = '{}/lists/sounds/{}'.format(base_url, playlist_id)
         print('Getting playlist: {}'.format(playlist_api_url))
-        playlist_response = requests.get(playlist_api_url, headers=headers)
+        playlist_response = requests.get(playlist_api_url, headers=get_apix_auth_headers())
         playlist_sounds = playlist_response.json()['items']
         playlist_name = playlist_response.json()['name']
 
@@ -200,12 +202,12 @@ def generate_playlist_preview():
 
         preview = preview.fade_in(duration=3 * one_second)
         preview = preview.fade_out(duration=3 * one_second)
-        audio_file_name = 'audio_files/previews/{}_{}.{}'.format(
+        audio_file_name = '{}_{}.{}'.format(
             playlist_id,
             ''.join(random.choice(string.ascii_letters + string.digits) for i in range(5)),
             file_format
         )
-        preview.export('/app/static/{}'.format(audio_file_name), format=file_format)
+        preview.export('static/{}'.format(audio_file_name), format=file_format)
 
         return render_template(
             'index.html',
