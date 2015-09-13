@@ -30,11 +30,11 @@ def get_playlists_from_page(url):
 
 
 def get_all_genre_playlists():
-    #genres_url = '{}/genres?has_list=True&sort_by=name'.format(config.base_url)
-    #genres = requests.get(genres_url, headers=config.headers).json()['items']
+    genres_url = '{}/genres?has_list=True&sort_by=name'.format(config.base_url)
+    genres = requests.get(genres_url, headers=config.headers).json()['items']
 
     all_playlists = get_playlists_from_page('{}/lists/homepage'.format(config.base_url))
-    #for genre in genres:
-    #    all_playlists += get_playlists_from_page(genre['list'])
+    for genre in genres:
+        all_playlists += get_playlists_from_page(genre['list'])
 
     return all_playlists

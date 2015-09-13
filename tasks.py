@@ -1,3 +1,4 @@
+import apix_playlists
 import boto
 import config
 import random
@@ -9,7 +10,6 @@ from boto.s3.key import Key
 from celery_app import app, celery
 from celery_tasks import wait
 from flask import render_template, request
-from playlists import get_all_genre_playlists
 from pydub import AudioSegment
 
 
@@ -133,8 +133,8 @@ def generate_playlist_preview():
 
 if __name__ == '__main__':
     app.debug = True
-    playlists = get_all_genre_playlists()
-    app.run()
+    playlists = apix_playlists.get_all_genre_playlists()
+    app.run(port=5432)
 
 
 
