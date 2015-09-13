@@ -35,6 +35,7 @@ audio_files = {
     }
 }
 
+global playlists
 
 def get_all_genre_playlists():
     genres_url = '{}/genres?has_list=True&sort_by=name'.format(base_url)
