@@ -8,13 +8,12 @@ from celery import Celery
 from flask import Flask, render_template, request
 from pydub import AudioSegment
 
-
-
 app = Flask(__name__)
 app.config.update(
     CELERY_BROKER_URL=os.environ.get('REDIS_URL') or 'redis://localhost:6379',
     CELERY_RESULT_BACKEND=os.environ.get('REDIS_URL') or 'redis://localhost:6379',
-    CELERY_IMPORTS=('tasks', )
+    CELERY_IMPORTS=('tasks', ),
+    DEBUG=True
 )
 
 headers = {'Authorization': 'Token {}'.format(os.environ.get('APIX_AUTH_TOKEN'))}
