@@ -1,0 +1,75 @@
+<!doctype html>
+        <head>
+            <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+            <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+            <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+            <script src="{{ url_for('static', filename='audiojs/audio.min.js') }}"></script>
+            <script>
+              audiojs.events.ready(function() {
+                var as = audiojs.createAll();
+              });
+            </script>
+            <title>Beatport Playlist Preview Generator</title>
+        </head>
+        <body>
+            <div class="form-style-5" id="content">
+                <form action="." method="POST" id="generate_form">
+                    <fieldset>
+                        <legend>Beatport Playlist:</legend>
+                        <select name="playlist_url">
+                        {% for playlist in playlists %}
+                            <option value="{{ playlist['url'] }}" {% if playlist_url==playlist['url'] %} selected {% endif %}>{{ playlist['page'] }} - {{ playlist['name'] }}</option>
+                        {% endfor %}
+                        </select>
+                        <label for="file_format">File Format:</label>
+                        <select id="file_format" name="file_format">
+                            <option value="mp4" {% if file_format=='mp4' %} selected {% endif %}>mp4</option>
+                            <option value="wav" {% if file_format=='wav' %} selected {% endif %}>wav</option>
+                        </select>
+                        <label>Sample Start: <span id="sample_start_value_label" style="font-style: normal;"></span> %</label>
+                        <input type="range" id="sample_start" name="sample_start" min="1" max="100" value="{% if sample_start %}{{ sample_start }}{% else %}25{% endif %}" onchange="document.getElementById('sample_start_value_label').innerHTML = this.value;" style="width: 100%">
+                        <label>Sample Duration: <span id="sample_duration_value_label" style="font-style: normal;"></span> seconds</label>
+                        <input type="range" id="sample_duration" name="sample_duration" min="1" max="30" value="{% if sample_duration %}{{ sample_duration }}{% else %}10{% endif %}" onchange="document.getElementById('sample_duration_value_label').innerHTML = this.value;" style="width: 75%">
+                        <label>Fade Duration: <span id="fade_duration_value_label" style="font-style: normal;"></span> seconds</label>
+                        <input type="range" id="fade_duration" name="fade_duration" min="1" max="10" value="{% if fade_duration %}{{ fade_duration }}{% else %}3{% endif %}" onchange="document.getElementById('fade_duration_value_label').innerHTML = this.value;" style="width: 40%">
+                        <label>Tracks to Preview (optional):</label>
+                        <input type="text" name="sound_start" placeholder="Start #" class="short">
+                        <input type="text" name="sound_end" placeholder="End #" class="short">
+                        <!--<input type="text" list="browsers" />
+                        <datalist id="browsers">
+                          <option value="test">IE</option>
+                          <option value="Firefox">
+                          <option value="Chrome">
+                          <option value="Opera">
+                          <option value="Safari">
+                        </datalist>-->
+                        </fieldset>
+                    <div id="submit">
+                        <input type="submit" value="Generate Preview" onclick="$('#loading').show(); $('#submit').hide(); $('#preview').hide(); $('#generate_form :input').prop('readonly', true);" />
+                    </div>
+                    <div align="center">
+                        <div id="loading" style="display:none;"><img src="{{ url_for('static', filename = 'loading.gif') }}" alt="" /></div>
+                        {%if audio_file_name %}
+                        <div id="preview">
+                            <label>Playlist Preview for <b>{{ playlist_name }}</b> ({{ sound_end - sound_start }} tracks):</label>
+                            <audio >
+                              <source src="{{ url_for('static', filename = audio_file_name) }}" type="audio/{{ file_format }}" preload="auto">
+                            Your browser does not support the audio element.
+                            </audio>
+                        </div>
+                        {% endif %}
+                    </div>
+                </form>
+            </div>
+            {% for sound_id in sound_ids %}
+            <div class="form-style-5">
+                <iframe src='https://embed-www.beatport.com/s/{{ sound_id }}' width='100%' height='166'scrolling='no' frameborder='0'></iframe>
+            </div>
+            {% endfor %}
+
+            <script type="text/javascript">
+                document.getElementById('sample_duration_value_label').innerHTML = document.getElementById('sample_duration').value
+                document.getElementById('fade_duration_value_label').innerHTML = document.getElementById('fade_duration').value
+                document.getElementById('sample_start_value_label').innerHTML = document.getElementById('sample_start').value
+            </script>
+        </body>
