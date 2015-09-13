@@ -116,10 +116,13 @@ def generate_playlist_preview():
         target_key = Key(target_bucket)
         target_key.key = audio_file_name
 
-        print('Uploading preview to S3: {}'.format(audio_file_name))
-        f = tempfile.NamedTemporaryFile(suffix='.{}'.format(file_format))
-        preview.export(f, format=file_format)
-        target_key.set_contents_from_file(f)
+
+        with tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format)) as f:
+            print('Exporting preview to temp file.')
+            print(f.name)
+            preview.export(f, format=file_format)
+            print('Uploading preview to S3: {}'.format(audio_file_name))
+            target_key.set_contents_from_file(f)
 
         return render_template(
             'index.html',
