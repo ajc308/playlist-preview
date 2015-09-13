@@ -35,6 +35,7 @@ audio_files = {
     }
 }
 
+playlists = get_all_genre_playlists()
 
 def process_sounds(sounds, file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start):
     preview = AudioSegment.empty()
@@ -143,7 +144,6 @@ def generate_playlist_preview():
 
 if __name__ == '__main__':
     app.debug = True
-    playlists = get_all_genre_playlists()
     app.run()
 
 
