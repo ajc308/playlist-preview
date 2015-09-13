@@ -1,60 +1,50 @@
 import boto
-import os
+import config
 import random
 import requests
 import string
 import tempfile
 
-from auth import get_apix_auth_headers
 from boto.s3.key import Key
-from flask import Flask, render_template, request
+from celery_app import app, celery
+from celery_tasks import wait
+from flask import render_template, request
 from playlists import get_all_genre_playlists
 from pydub import AudioSegment
-from urllib.request import urlopen
 
-app = Flask(__name__)
-app.config.update(
-    DEBUG=True
-)
-
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-
-base_url = 'https://apix.beatport.com'
-one_second = 1000
-audio_files = {
-    'wav': {
-        'file_format': 'wav',
-        'aws_storage_bucket_name': 'beatport-prod-api-original',
-        's3_extension': None
-    },
-    'mp4': {
-        'file_format': 'mp4',
-        'aws_storage_bucket_name': 'beatport-prod-api-encoded',
-        's3_extension': '.mp4'
-    }
-}
-
-playlists = get_all_genre_playlists()
 
 def process_sounds(sounds, file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start):
     preview = AudioSegment.empty()
 
+    tempfs = []
     for count, sound in enumerate(sounds, 1):
-        print('\nProcessing {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
+        print('\nDownloading {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
         print(sound['name'], sound['url'])
 
         key = bucket.get_key(sound['id'] + s3_extension if s3_extension else sound['id'])
-        with urlopen(key.generate_url(expires_in=1000)) as f:
-            song = AudioSegment.from_file(f, format=file_format)
+        tempf = tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format))
+        get_contents_to_file.delay(tempf.name, key)
 
-            #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
-            sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * one_second]
+        tempfs.append(tempf)
 
-            #Append sample with cross fade
-            preview = preview.append(sample, crossfade=fade_duration * one_second) if preview else sample
+    wait(get_contents_to_file)
+
+    for count, tempf in enumerate(tempfs, 1):
+        print('\nProcessing {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
+        song = AudioSegment.from_file(tempf.name, format=file_format)
+
+        #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
+        sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * config.one_second]
+
+        #Append sample with cross fade
+        preview = preview.append(sample, crossfade=fade_duration * config.one_second) if preview else sample
 
     return preview
+
+
+@celery.task(name="tasks.get_contents_to_file")
+def get_contents_to_file(filename, key):
+    key.get_contents_to_filename(filename)
 
 
 @app.route('/')
@@ -78,44 +68,40 @@ def generate_playlist_preview():
     fade_duration = int(request.form['fade_duration'])
     sample_duration = int(request.form['sample_duration'])
     sample_start = int(request.form['sample_start']) / 100
-    print(playlist_url)
+
     if playlist_url:
         playlist_id = playlist_url.split('/')[-1]
 
-        if file_format not in audio_files.keys():
-            raise ValueError('Unsupported file format. Supported: {}'.format(audio_files.keys()))
+        if file_format not in config.audio_files.keys():
+            raise ValueError('Unsupported file format. Supported: {}'.format(config.audio_files.keys()))
 
-        bucket_name = audio_files[file_format]['aws_storage_bucket_name']
-        conn = boto.connect_s3(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+        bucket_name = config.audio_files[file_format]['aws_storage_bucket_name']
+        conn = boto.connect_s3(config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY)
         bucket = conn.get_bucket(bucket_name)
 
-
-
-        playlist_api_url = '{}/lists/sounds/{}'.format(base_url, playlist_id)
+        playlist_api_url = '{}/lists/sounds/{}'.format(config.base_url, playlist_id)
         print('Getting playlist: {}'.format(playlist_api_url))
-        playlist_response = requests.get(playlist_api_url, headers=get_apix_auth_headers())
+        playlist_response = requests.get(playlist_api_url, headers=config.headers)
         playlist_sounds = playlist_response.json()['items']
         playlist_name = playlist_response.json()['name']
 
         sound_ids = [sound['id'] for sound in playlist_sounds[sound_start:sound_end]]
-        s3_extension = audio_files[file_format]['s3_extension']
+        s3_extension = config.audio_files[file_format]['s3_extension']
 
         print('Processing playlist: {}'.format(playlist_response.json()['name']))
         preview = process_sounds(playlist_sounds[sound_start:sound_end], file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start)
 
-        preview = preview.fade_in(duration=3 * one_second)
-        preview = preview.fade_out(duration=3 * one_second)
+        preview = preview.fade_in(duration=3 * config.one_second)
+        preview = preview.fade_out(duration=3 * config.one_second)
         audio_file_name = 'playlist-preview/{}/{}.{}'.format(
             playlist_id,
             ''.join(random.choice(string.ascii_letters + string.digits) for i in range(5)),
             file_format
         )
 
-        target_bucket_name = 'newport-homepage'
-        target_bucket = conn.get_bucket(target_bucket_name)
+        target_bucket = conn.get_bucket(config.target_bucket_name)
         target_key = Key(target_bucket)
         target_key.key = audio_file_name
-
 
         with tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format)) as f:
             print('Exporting preview to temp file.')
@@ -147,6 +133,7 @@ def generate_playlist_preview():
 
 if __name__ == '__main__':
     app.debug = True
+    playlists = get_all_genre_playlists()
     app.run()
 
 

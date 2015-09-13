@@ -1,6 +1,6 @@
 <!doctype html>
         <head>
-            <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+            <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
             <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
             <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
             <script src="{{ url_for('static', filename='audiojs/audio.min.js') }}"></script>
@@ -35,14 +35,6 @@
                         <label>Tracks to Preview (optional):</label>
                         <input type="text" name="sound_start" placeholder="Start #" class="short">
                         <input type="text" name="sound_end" placeholder="End #" class="short">
-                        <!--<input type="text" list="browsers" />
-                        <datalist id="browsers">
-                          <option value="test">IE</option>
-                          <option value="Firefox">
-                          <option value="Chrome">
-                          <option value="Opera">
-                          <option value="Safari">
-                        </datalist>-->
                         </fieldset>
                     <div id="submit">
                         <input type="submit" value="Generate Preview" onclick="$('#loading').show(); $('#submit').hide(); $('#preview').hide(); $('#generate_form :input').prop('readonly', true);" />
