@@ -135,7 +135,7 @@ def process_sounds(sounds, file_format, s3_extension, sample_duration, fade_dura
         print(sound['name'], sound['url'])
         key_name = sound['id'] + s3_extension if s3_extension else sound['id']
 
-        song = AudioSegment.from_file(('static/audio_files/songs/{}'.format(key_name)), format=file_format)
+        song = AudioSegment.from_file(('/app/static/audio_files/songs/{}'.format(key_name)), format=file_format)
 
         #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
         sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * one_second]
@@ -143,14 +143,14 @@ def process_sounds(sounds, file_format, s3_extension, sample_duration, fade_dura
         #Append sample with cross fade
         preview = preview.append(sample, crossfade=fade_duration * one_second) if preview else sample
 
-        os.remove('static/audio_files/songs/{}'.format(key_name))
+        os.remove('/app/static/audio_files/songs/{}'.format(key_name))
 
     return preview
 
 
 @celery.task(name="tasks.download_sound")
 def download_sound(bucket, key_name):
-    bucket.get_key(key_name).get_contents_to_filename('static/audio_files/songs/{}'.format(key_name))
+    bucket.get_key(key_name).get_contents_to_filename('/app/static/audio_files/songs/{}'.format(key_name))
 
 
 @app.route('/')
@@ -205,7 +205,7 @@ def generate_playlist_preview():
             ''.join(random.choice(string.ascii_letters + string.digits) for i in range(5)),
             file_format
         )
-        preview.export('static/{}'.format(audio_file_name), format=file_format)
+        preview.export('/app/static/{}'.format(audio_file_name), format=file_format)
 
         return render_template(
             'index.html',
