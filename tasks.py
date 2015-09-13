@@ -35,7 +35,6 @@ audio_files = {
     }
 }
 
-global playlists
 
 def get_all_genre_playlists():
     genres_url = '{}/genres?has_list=True&sort_by=name'.format(base_url)
@@ -47,6 +46,7 @@ def get_all_genre_playlists():
 
     return all_playlists
 
+playlists = get_all_genre_playlists()
 
 def get_playlists_from_page(url):
     print(url)
@@ -267,7 +267,6 @@ def generate_playlist_preview():
 
 if __name__ == '__main__':
     app.debug = True
-    playlists = get_all_genre_playlists()
     app.run()
 
 
