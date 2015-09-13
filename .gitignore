@@ -1,0 +1,7 @@
+*.pyc
+.vagrant
+*.DS_Store
+__pycache__
+scratchpad.yml
+venv
+*.rdb
