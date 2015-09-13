@@ -1,4 +1,3 @@
-import os
 import requests
 
 from auth import get_apix_auth_headers

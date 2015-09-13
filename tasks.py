@@ -3,18 +3,17 @@ import os
 import random
 import requests
 import string
+import tempfile
 
 from auth import get_apix_auth_headers
-from celery import Celery
+from boto.s3.key import Key
 from flask import Flask, render_template, request
 from playlists import get_all_genre_playlists
 from pydub import AudioSegment
+from urllib.request import urlopen
 
 app = Flask(__name__)
 app.config.update(
-    CELERY_BROKER_URL=os.environ.get('REDIS_URL') or 'redis://localhost:6379',
-    CELERY_RESULT_BACKEND=os.environ.get('REDIS_URL') or 'redis://localhost:6379',
-    CELERY_IMPORTS=('tasks', ),
     DEBUG=True
 )
 
@@ -36,123 +35,25 @@ audio_files = {
     }
 }
 
-playlists = get_all_genre_playlists()
 
-def make_celery(app):
-    c = Celery(app.import_name, broker=app.config['CELERY_BROKER_URL'])
-    c.conf.update(app.config)
-    TaskBase = c.Task
-    class ContextTask(TaskBase):
-        abstract = True
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return TaskBase.__call__(self, *args, **kwargs)
-    c.Task = ContextTask
-    return c
-
-celery = make_celery(app)
-celery_inspector = celery.control.inspect()
-
-
-def wait(function):
-    task_count = get_task_count(function)
-    while task_count:
-        print('Processing waiting for {0} {1} celery tasks to complete'.format(
-            task_count,
-            function.__name__ if function else ''
-        ))
-        task_count = get_task_count(function)
-
-
-def get_task_count(function):
-
-    # reserved are not yet scheduled, scheduled are not yet active
-    reserved = get_reserved_tasks().get(function.name, {})
-    scheduled = get_scheduled_tasks().get(function.name, {})
-    active = get_active_tasks().get(function.name, {})
-
-    return len(reserved) + len(scheduled) + len(active)
-
-
-def get_reserved_tasks():
-    """ This function exists to be called from ipython as part of debugging efforts
-    """
-    reserved = organize_tasks(celery_inspector.reserved())
-    return reserved
-
-
-def get_scheduled_tasks():
-    """ This function exists to be called from ipython as part of debugging efforts
-    """
-    scheduled = organize_tasks(celery_inspector.scheduled())
-    return scheduled
-
-
-def get_active_tasks():
-    """ This function exists to be called from ipython as part of debugging efforts
-    """
-    active = organize_tasks(celery_inspector.active())
-    return active
-
-
-def organize_tasks(collection):
-    """
-    This gets all tasks for the given celery_inspector state
-    :param collection: celery_inspector state (celery_inspector.active(), celery_inspector.scheduled(), etc.)
-    :return: worker and ID#s for the collection
-    """
-    results = {}
-    if collection:
-        for worker, tasks in collection.items():
-            for task in tasks:
-                function = task['name']
-                celery_id = task['id']
-                celery_worker = task['hostname']
-                if function not in results.keys():
-                    results[function] = []
-                data = {'celery_worker': celery_worker, 'celery_id': celery_id}
-                results[function].append(data)
-    return results
-
-
-def download_sounds(sounds, bucket, s3_extension):
-
-    for count, sound in enumerate(sounds, 1):
-        print('\nDownloading {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
-        print(sound['name'], sound['url'])
-        key_name = sound['id'] + s3_extension if s3_extension else sound['id']
-
-        download_sound.delay(bucket, key_name)
-
-    wait(download_sound)
-
-
-def process_sounds(sounds, file_format, s3_extension, sample_duration, fade_duration, sample_start):
+def process_sounds(sounds, file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start):
     preview = AudioSegment.empty()
 
     for count, sound in enumerate(sounds, 1):
         print('\nProcessing {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
         print(sound['name'], sound['url'])
-        key_name = sound['id'] + s3_extension if s3_extension else sound['id']
 
-        song = AudioSegment.from_file('static/{}'.format(key_name), format=file_format)
-        print(song)
+        key = bucket.get_key(sound['id'] + s3_extension if s3_extension else sound['id'])
+        with urlopen(key.generate_url(expires_in=1000)) as f:
+            song = AudioSegment.from_file(f, format=file_format)
 
-        #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
-        sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * one_second]
+            #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
+            sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * one_second]
 
-        #Append sample with cross fade
-        preview = preview.append(sample, crossfade=fade_duration * one_second) if preview else sample
-
-        os.remove('static/{}'.format(key_name))
+            #Append sample with cross fade
+            preview = preview.append(sample, crossfade=fade_duration * one_second) if preview else sample
 
     return preview
-
-
-@celery.task(name="tasks.download_sound")
-def download_sound(bucket, key_name):
-    f = bucket.get_key(key_name).get_contents_to_filename('static/{}'.format(key_name))
-    print(f)
 
 
 @app.route('/')
@@ -187,6 +88,8 @@ def generate_playlist_preview():
         conn = boto.connect_s3(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
         bucket = conn.get_bucket(bucket_name)
 
+
+
         playlist_api_url = '{}/lists/sounds/{}'.format(base_url, playlist_id)
         print('Getting playlist: {}'.format(playlist_api_url))
         playlist_response = requests.get(playlist_api_url, headers=get_apix_auth_headers())
@@ -197,21 +100,29 @@ def generate_playlist_preview():
         s3_extension = audio_files[file_format]['s3_extension']
 
         print('Processing playlist: {}'.format(playlist_response.json()['name']))
-        download_sounds(playlist_sounds[sound_start:sound_end], bucket, s3_extension)
-        preview = process_sounds(playlist_sounds[sound_start:sound_end], file_format, s3_extension, sample_duration, fade_duration, sample_start)
+        preview = process_sounds(playlist_sounds[sound_start:sound_end], file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start)
 
         preview = preview.fade_in(duration=3 * one_second)
         preview = preview.fade_out(duration=3 * one_second)
-        audio_file_name = '{}_{}.{}'.format(
+        audio_file_name = 'playlist-preview/{}/{}.{}'.format(
             playlist_id,
             ''.join(random.choice(string.ascii_letters + string.digits) for i in range(5)),
             file_format
         )
-        preview.export('static/{}'.format(audio_file_name), format=file_format)
+
+        target_bucket_name = 'newport-homepage'
+        target_bucket = conn.get_bucket(target_bucket_name)
+        target_key = Key(target_bucket)
+        target_key.key = audio_file_name
+
+        print('Uploading preview to S3: {}'.format(audio_file_name))
+        f = tempfile.NamedTemporaryFile(suffix='.{}'.format(file_format))
+        preview.export(f, format=file_format)
+        target_key.set_contents_from_file(f)
 
         return render_template(
             'index.html',
-            audio_file_name=audio_file_name,
+            audio_file_name=target_key.generate_url(expires_in=1000),
             playlist_url = playlist_url,
             file_format=file_format,
             sound_start=sound_start or 0,
@@ -232,6 +143,7 @@ def generate_playlist_preview():
 
 if __name__ == '__main__':
     app.debug = True
+    playlists = get_all_genre_playlists()
     app.run()
 
 
