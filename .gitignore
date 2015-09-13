@@ -5,3 +5,5 @@ __pycache__
 scratchpad.yml
 venv
 *.rdb
+*.mp4
+*.wav
