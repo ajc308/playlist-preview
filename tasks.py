@@ -16,35 +16,39 @@ from pydub import AudioSegment
 def process_sounds(sounds, file_format, bucket, s3_extension, sample_duration, fade_duration, sample_start):
     preview = AudioSegment.empty()
 
-    tempfs = []
+    sample_filenames = []
     for count, sound in enumerate(sounds, 1):
-        print('\nDownloading {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
+        print('\nDownloading and sampling {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
         print(sound['name'], sound['url'])
 
         key = bucket.get_key(sound['id'] + s3_extension if s3_extension else sound['id'])
-        tempf = tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format))
-        get_contents_to_file.delay(tempf.name, key)
+        source_filename = tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format)).name
+        sample_filename = tempfile.NamedTemporaryFile(prefix='/tmp/', suffix='.{}'.format(file_format)).name
 
-        tempfs.append(tempf)
+        get_sample_from_key.delay(source_filename, sample_filename, key, file_format, sound, sample_start, sample_duration)
 
-    wait(get_contents_to_file)
+        sample_filenames.append(sample_filename)
 
-    for count, tempf in enumerate(tempfs, 1):
+    wait(get_sample_from_key)
+
+    for count, sample_filename in enumerate(sample_filenames, 1):
         print('\nProcessing {} of {}, {:.0f}% complete'.format(count, len(sounds), (count / len(sounds)) * 100))
-        song = AudioSegment.from_file(tempf.name, format=file_format)
-
-        #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
-        sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * config.one_second]
-
+        print(sample_filename)
+        sample = AudioSegment.from_file(sample_filename, format=file_format)
         #Append sample with cross fade
         preview = preview.append(sample, crossfade=fade_duration * config.one_second) if preview else sample
 
     return preview
 
 
-@celery.task(name="tasks.get_contents_to_file")
-def get_contents_to_file(filename, key):
-    key.get_contents_to_filename(filename)
+@celery.task(name="tasks.get_sample_from_key")
+def get_sample_from_key(source_filename, sample_filename, key, file_format, sound, sample_start, sample_duration):
+    key.get_contents_to_filename(source_filename)
+    song = AudioSegment.from_file(source_filename, format=file_format)
+    #SAMPLE_DURATION second long sample starting at SAMPLE_START% into the song
+    sample = song[int(sound['duration'] * sample_start): int(sound['duration'] * sample_start) + sample_duration * config.one_second]
+    print(sample.duration_seconds)
+    sample.export(sample_filename, format=file_format)
 
 
 @app.route('/')
