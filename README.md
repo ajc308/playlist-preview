@@ -3,8 +3,12 @@ Takes any Beatport.com playlist and generates a sample preview file of all the s
 Inspired by looking at long playlists and wondering if there was anything in them I would like, without having to scrub and skip.
 
 #### Deploy:  
-Install dependencies in requirements.txt and redis, then run the following in 3 terminal sessions:  
+Install requirements: 
+`$ pip install -r requirements.txt`  
 
+Download and install Redis: http://redis.io/download
+
+Run the following in 3 terminal sessions:  
 1. `$ redis-server`  
 2. `$ celery -A tasks.celery worker`  
 3. `$ python tasks.py`
